@@ -1,0 +1,17 @@
+# backend/ (Python)
+backend/venv/
+backend/__pycache__/
+backend/.env
+backend/vector_db/
+
+# frontend/ (Next.js / Node)
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# OS specific
+.DS_Store
+Thumbs.db
