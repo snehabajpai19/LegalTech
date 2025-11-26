@@ -1,8 +1,8 @@
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings 
-from routers import chatbot, summarizer 
+from routers import chatbot, summarizer, generator
+
 from database import db_client
 
 app = FastAPI()
@@ -37,8 +37,7 @@ app.add_middleware(
 # --- API Routes ---
 app.include_router(chatbot.router)
 app.include_router(summarizer.router)
-#app.include_router(generator.router)  
-
+app.include_router(generator.router)
 
 @app.get("/api/health")
 def health_check():

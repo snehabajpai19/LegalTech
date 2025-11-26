@@ -14,6 +14,15 @@ class Document(BaseModel):
 
     #For Generator
     generated_text:Optional[str]=Field(None)
+    template_id: Optional[str] = Field(None)
+    template_version: Optional[str] = Field(None)
+    inputs_hash: Optional[str] = Field(
+        None, description="Hash of user inputs used for the generated document"
+    )
+    metadata: Optional[dict] = Field(
+        default_factory=dict,
+        description="Additional metadata such as AI suggestions or audit info",
+    )
 
     class Config:
         populate_by_name=True

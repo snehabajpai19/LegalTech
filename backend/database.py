@@ -21,6 +21,9 @@ class Database:
 
             self.documents = self.db.documents
             self.chat_history = self.db.chat_history
+            self.document_templates = self.db.document_templates
+            self.document_templates.create_index("name", unique=True)
+            self.pii_mappings = self.db.pii_mappings
 
             print("✅ Database connection successful.")
         
