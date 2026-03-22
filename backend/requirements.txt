@@ -86,6 +86,7 @@ pydantic_core==2.41.4
 Pygments==2.19.2
 pymongo==4.15.3
 pypdf==6.9.1
+python-multipart==0.0.20
 PyPika==0.51.1
 pyproject_hooks==1.2.0
 python-dateutil==2.9.0.post0
