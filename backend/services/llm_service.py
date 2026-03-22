@@ -1,9 +1,11 @@
 # backend/services/llm_service.py
 import os
+
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
+
 
 class LLMService:
     def __init__(self):
@@ -17,11 +19,10 @@ class LLMService:
         try:
             response = self.llm.invoke(final_prompt)
             return response.content
-            
+
         except Exception as e:
-            print(f"❌ LangChain LLM Error: {e}")
+            print(f"LangChain LLM Error: {e}")
             return "I'm sorry, I encountered an error processing your legal query."
 
-# Singleton instance
-llm_service = LLMService()
 
+llm_service = LLMService()
