@@ -120,4 +120,5 @@ cd frontend
 # 2. Start the Next.js server
 npm run dev
 ```
-✅ **Frontend is now running at `http://localhost:3000`**w
+✅ **Frontend is now running at `http://localhost:3000`**
+
