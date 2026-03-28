@@ -56,6 +56,20 @@ class VectorService:
         if not self.db:
             return []
         return self.db.similarity_search(query, k=k)
+    
+    def search_legal_docs_with_scores(self, query: str, k: int = 10):
+        """
+        Semantic search over Chroma. Returns (Document, distance) pairs.
+        Lower distance usually means closer match (depends on Chroma metric).
+        """
+        if not self.db:
+            return []
+        try:
+            return self.db.similarity_search_with_score(query, k=k)
+        except Exception as exc:
+            print(f"similarity_search_with_score failed ({exc}); falling back without scores.")
+            docs = self.db.similarity_search(query, k=k)
+            return [(doc, 0.0) for doc in docs]
 
 
 vector_service = VectorService()
