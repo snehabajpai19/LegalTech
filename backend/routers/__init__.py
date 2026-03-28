@@ -1,3 +1,3 @@
-from . import chatbot, summarizer, generator
+from . import auth, chatbot, generator, search, summarizer
 
-__all__ = ["chatbot", "summarizer", "generator","search"]
+__all__ = ["auth", "chatbot", "summarizer", "generator", "search"]

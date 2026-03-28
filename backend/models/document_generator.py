@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 
 class DocumentGenerationPayload(BaseModel):
     template_id: UUID
-    user_id: UUID
     inputs: Dict[str, Any] = Field(
         default_factory=dict,
         description="Key-value pairs that will be merged into the template context.",

@@ -1,5 +1,5 @@
 from datetime import datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pymongo.database import Database
 
@@ -11,7 +11,7 @@ class SummarizerService:
     @staticmethod
     def process_summarization(
         db: Database,
-        user_id: str,
+        user_id: UUID,
         text: str,
         source_type: str,
         filename: str | None = None,
@@ -48,7 +48,7 @@ INSTRUCTIONS:
         db.documents.insert_one(
             {
                 "_id": str(uuid4()),
-                "user_id": user_id,
+                "user_id": str(user_id),
                 "original_text": document_text,
                 "summarized_text": summary,
                 "source_type": source_type,

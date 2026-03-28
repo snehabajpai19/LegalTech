@@ -28,7 +28,7 @@ class VectorService:
         try:
             self.embeddings = HuggingFaceEmbeddings(
                 model_name=self.model_name,
-                model_kwargs={"device": "cpu"},
+                model_kwargs={"device": "cpu", "local_files_only": True},
             )
         except Exception as e:
             print(f"ERROR: failed to initialize embeddings: {e}")

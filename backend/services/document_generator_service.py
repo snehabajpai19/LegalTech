@@ -33,9 +33,21 @@ class DocumentGeneratorService:
     def __init__(self) -> None:
         self.template_service = TemplateService()
         self.documents_collection = db_client.documents
-        self.pii_mapping_collection = db_client.db.pii_mappings
+        self.pii_mapping_collection = db_client.pii_mappings
 
-    def generate(self, payload: DocumentGenerationPayload) -> DocumentGenerationResult:
+    def _require_collections(self) -> None:
+        if self.documents_collection is None or self.pii_mapping_collection is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="MongoDB collections required for document generation are not available.",
+            )
+
+    def generate(
+        self,
+        payload: DocumentGenerationPayload,
+        user_id: UUID,
+    ) -> DocumentGenerationResult:
+        self._require_collections()
         template = self.template_service.get_template(payload.template_id)
         context = payload.inputs or {}
         self._validate_required_fields(template, context)
@@ -47,7 +59,7 @@ class DocumentGeneratorService:
         placeholder_map.update(regex_map)
 
         mapping_id = (
-            self._store_pii_mapping(payload.user_id, placeholder_map)
+            self._store_pii_mapping(user_id, placeholder_map)
             if placeholder_map
             else None
         )
@@ -57,6 +69,7 @@ class DocumentGeneratorService:
 
         document = self._persist_document(
             payload=payload,
+            user_id=user_id,
             template=template,
             rendered_text=rendered_text,
             inputs_hash=inputs_hash,
@@ -128,6 +141,7 @@ class DocumentGeneratorService:
         return updated, mapping
 
     def _store_pii_mapping(self, user_id: UUID, mapping: Dict[str, str]) -> str:
+        self._require_collections()
         mapping_id = str(uuid4())
         record = {
             "_id": mapping_id,
@@ -154,6 +168,7 @@ class DocumentGeneratorService:
     def _persist_document(
         self,
         payload: DocumentGenerationPayload,
+        user_id: UUID,
         template: DocumentTemplate,
         rendered_text: str,
         inputs_hash: str,
@@ -161,7 +176,7 @@ class DocumentGeneratorService:
         placeholders: List[str],
     ) -> Document:
         document = Document(
-            user_id=payload.user_id,
+            user_id=user_id,
             generated_text=rendered_text,
             template_id=str(template.id),
             template_version=template.version,
