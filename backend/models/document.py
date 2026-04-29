@@ -1,7 +1,8 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional 
-from uuid import UUID,uuid4
 from datetime import datetime
+from typing import Optional
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field
 
 class Document(BaseModel):
     id:UUID =Field(default_factory=uuid4,alias="_id")
@@ -38,18 +39,23 @@ class Document(BaseModel):
 #Chat Message
 
 class ChatMessage(BaseModel):
-    id:UUID=Field(default_factory=uuid4,alias="_id")
-    document_id:UUID=Field(...)
-    created_at:datetime=Field(default_factory=datetime.utcnow)
-    message: str=Field(...)
-    timestamp:datetime=Field(default_factory=datetime.utcnow)
+    id: UUID = Field(default_factory=uuid4, alias="_id")
+    user_id: UUID = Field(...)
+    document_id: Optional[str] = Field(None)
+    message: str = Field(...)
+    answer: str = Field(...)
+    mode: str = Field(default="general")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:
-        populate_by_name=True
-        json_schema_extra={
-            "example":{
-                "document_id":"660e8400-e29b-41d4-a716-446655440000",
-                "sender":"user",
-                "message":"What is the summary of this document?"
+        populate_by_name = True
+        json_schema_extra = {
+            "example": {
+                "user_id": "550e8400-e29b-41d4-a716-446655440000",
+                "document_id": "660e8400-e29b-41d4-a716-446655440000",
+                "message": "What is the summary of this document?",
+                "answer": "Clause 4 focuses on payment obligations.",
+                "mode": "document",
             }
         }

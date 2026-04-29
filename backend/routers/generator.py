@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from dependencies.auth import get_current_user
+from models.auth import AuthenticatedUser
 from models.document_generator import (
     DocumentGenerationPayload,
     DocumentGenerationResult,
@@ -59,5 +61,8 @@ def delete_template(template_id: UUID) -> None:
     response_model=DocumentGenerationResult,
     status_code=status.HTTP_201_CREATED,
 )
-def render_document(payload: DocumentGenerationPayload) -> DocumentGenerationResult:
-    return _generator_service.generate(payload)
+def render_document(
+    payload: DocumentGenerationPayload,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> DocumentGenerationResult:
+    return _generator_service.generate(payload, user_id=UUID(current_user.id))

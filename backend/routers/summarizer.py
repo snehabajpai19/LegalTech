@@ -1,15 +1,17 @@
 # backend/routers/summarizer.py
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pymongo.database import Database
 
 from database import get_db
+from dependencies.auth import get_current_user
+from models.auth import AuthenticatedUser
 from services.summarizer_service import summarizer_service
 from utils.ocr_utils import SUPPORTED_OCR_EXTENSIONS, extract_text_from_image
 from utils.pdf_utils import extract_text_from_pdf
 
 router = APIRouter()
-
-DEMO_USER_ID = "fe7b6cf4-aa6b-465c-b388-82e3e1d74f79"
 
 
 def _normalize_filename(filename: str | None) -> str:
@@ -19,8 +21,8 @@ def _normalize_filename(filename: str | None) -> str:
 @router.post("/api/summarizer/upload/pdf")
 async def summarize_pdf(
     file: UploadFile = File(...),
-    user_id: str = Form(DEMO_USER_ID),
     db: Database = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     filename = _normalize_filename(file.filename)
     if not filename.endswith(".pdf"):
@@ -35,7 +37,7 @@ async def summarize_pdf(
 
         summary = summarizer_service.process_summarization(
             db=db,
-            user_id=user_id,
+            user_id=UUID(current_user.id),
             text=extracted_text,
             source_type="pdf",
             filename=file.filename,
@@ -54,8 +56,8 @@ async def summarize_pdf(
 @router.post("/api/summarizer/upload/ocr")
 async def summarize_ocr(
     file: UploadFile = File(...),
-    user_id: str = Form(DEMO_USER_ID),
     db: Database = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     filename = _normalize_filename(file.filename)
     if not any(filename.endswith(ext) for ext in SUPPORTED_OCR_EXTENSIONS):
@@ -73,7 +75,7 @@ async def summarize_ocr(
 
         summary = summarizer_service.process_summarization(
             db=db,
-            user_id=user_id,
+            user_id=UUID(current_user.id),
             text=extracted_text,
             source_type="ocr",
             filename=file.filename,

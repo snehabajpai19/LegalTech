@@ -48,3 +48,22 @@ Implementation of the Legal Edge document generator module with template managem
 4. Seed DB with at least one FIR template for local testing.
 
 _This log should be updated after every meaningful milestone (new feature, refactor, or decision)._
+
+## All routes
+Public:
+
+GET /api/health
+POST /api/auth/google
+GET /api/templates
+POST /api/templates
+GET /api/templates/{template_id}
+PUT /api/templates/{template_id}
+DELETE /api/templates/{template_id}
+POST /api/search/legal
+Protected:
+
+GET /api/auth/me
+POST /api/chatbot/query
+POST /api/summarizer/upload/pdf
+POST /api/summarizer/upload/ocr
+POST /api/generator/render

@@ -19,7 +19,15 @@ class TemplateService:
     """Business logic around creating and managing legal document templates."""
 
     def __init__(self):
-        self.collection = db_client.db.document_templates
+        self.collection = db_client.document_templates
+
+    def _require_collection(self):
+        if self.collection is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="MongoDB document_templates collection is not available.",
+            )
+        return self.collection
 
     @staticmethod
     def _serialize(template_doc: dict) -> DocumentTemplate:
@@ -30,14 +38,16 @@ class TemplateService:
         return DocumentTemplate(**template_doc)
 
     def list_templates(self, category: Optional[str] = None) -> List[DocumentTemplate]:
+        collection = self._require_collection()
         query = {"category": category} if category else {}
         results = []
-        for doc in self.collection.find(query):
+        for doc in collection.find(query):
             results.append(self._serialize(doc))
         return results
 
     def get_template(self, template_id: UUID) -> DocumentTemplate:
-        doc = self.collection.find_one({"_id": str(template_id)})
+        collection = self._require_collection()
+        doc = collection.find_one({"_id": str(template_id)})
         if not doc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -46,6 +56,7 @@ class TemplateService:
         return self._serialize(doc)
 
     def create_template(self, payload: DocumentTemplateCreate) -> DocumentTemplate:
+        collection = self._require_collection()
         template_id = uuid4()
         template_doc = payload.model_dump()
         template_doc.update(
@@ -55,12 +66,13 @@ class TemplateService:
                 "updated_at": datetime.utcnow(),
             }
         )
-        self.collection.insert_one(template_doc)
+        collection.insert_one(template_doc)
         return self._serialize(template_doc)
 
     def update_template(
         self, template_id: UUID, payload: DocumentTemplateUpdate
     ) -> DocumentTemplate:
+        collection = self._require_collection()
         update_data = {
             k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None
         }
@@ -69,7 +81,7 @@ class TemplateService:
 
         update_data["updated_at"] = datetime.utcnow()
 
-        result = self.collection.find_one_and_update(
+        result = collection.find_one_and_update(
             {"_id": str(template_id)},
             {"$set": update_data},
             return_document=ReturnDocument.AFTER,
@@ -82,7 +94,8 @@ class TemplateService:
         return self._serialize(result)
 
     def delete_template(self, template_id: UUID) -> None:
-        delete_result = self.collection.delete_one({"_id": str(template_id)})
+        collection = self._require_collection()
+        delete_result = collection.delete_one({"_id": str(template_id)})
         if delete_result.deleted_count == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
