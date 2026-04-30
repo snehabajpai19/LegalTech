@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from database import db_client
 from models.document_template import (
@@ -66,7 +67,13 @@ class TemplateService:
                 "updated_at": datetime.utcnow(),
             }
         )
-        collection.insert_one(template_doc)
+        try:
+            collection.insert_one(template_doc)
+        except DuplicateKeyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A template with this name already exists.",
+            ) from exc
         return self._serialize(template_doc)
 
     def update_template(
@@ -81,11 +88,17 @@ class TemplateService:
 
         update_data["updated_at"] = datetime.utcnow()
 
-        result = collection.find_one_and_update(
-            {"_id": str(template_id)},
-            {"$set": update_data},
-            return_document=ReturnDocument.AFTER,
-        )
+        try:
+            result = collection.find_one_and_update(
+                {"_id": str(template_id)},
+                {"$set": update_data},
+                return_document=ReturnDocument.AFTER,
+            )
+        except DuplicateKeyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A template with this name already exists.",
+            ) from exc
         if not result:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

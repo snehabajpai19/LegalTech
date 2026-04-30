@@ -2,9 +2,10 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from pymongo.errors import PyMongoError
 
 from database import db_client
-from models.document import ChatMessage
+from models.document import ChatHistoryResponse, ChatMessage
 from services.llm_service import llm_service
 from services.vector_service import vector_service
 
@@ -55,7 +56,13 @@ def _load_user_document(user_id: UUID, document_id: str) -> dict:
             detail="MongoDB document store is not available.",
         )
 
-    document = db_client.documents.find_one({"_id": document_id, "user_id": str(user_id)})
+    try:
+        document = db_client.documents.find_one({"_id": document_id, "user_id": str(user_id)})
+    except PyMongoError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MongoDB document store is not available.",
+        ) from exc
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -86,7 +93,10 @@ def _persist_document_chat(
     for key, value in list(payload.items()):
         if isinstance(value, UUID):
             payload[key] = str(value)
-    db_client.chat_history.insert_one(payload)
+    try:
+        db_client.chat_history.insert_one(payload)
+    except PyMongoError:
+        return
 
 
 def process_query(user_id: UUID, query: str, document_id: str | None = None):
@@ -115,3 +125,23 @@ def process_query(user_id: UUID, query: str, document_id: str | None = None):
     if document_id:
         _persist_document_chat(user_id, document_id, cleaned_query, ai_answer)
     return ai_answer
+
+
+def get_chat_history(user_id: UUID) -> list[ChatHistoryResponse]:
+    if db_client.chat_history is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MongoDB chat history collection is not available.",
+        )
+
+    try:
+        records = (
+            db_client.chat_history.find({"user_id": str(user_id)})
+            .sort("created_at", -1)
+        )
+    except PyMongoError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MongoDB chat history collection is not available.",
+        ) from exc
+    return [ChatHistoryResponse(**record) for record in records]

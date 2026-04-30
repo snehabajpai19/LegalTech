@@ -1,8 +1,14 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from config import settings 
-from routers import auth, chatbot, summarizer, generator,search
+from routers import auth, chatbot, documents, summarizer, generator,search
 from database import db_client
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -36,9 +42,34 @@ app.add_middleware(
 # --- API Routes ---
 app.include_router(chatbot.router)
 app.include_router(summarizer.router)
+app.include_router(documents.router)
 app.include_router(generator.router)
 app.include_router(auth.router)
 app.include_router(search.router)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_: Request, exc: HTTPException):
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(_: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(_: Request, exc: Exception):
+    logger.exception("Unhandled backend exception", exc_info=exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error"},
+    )
+
+
 @app.get("/api/health")
 def health_check():
     """
