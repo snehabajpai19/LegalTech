@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import binascii
 import base64
 import hashlib
 import hmac
@@ -8,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
+from pydantic import ValidationError
 
 from config import settings
 from database import db_client
@@ -167,15 +169,27 @@ class AuthService:
             signing_input,
             hashlib.sha256,
         ).digest()
-        provided_signature = _b64url_decode(signature_segment)
+        try:
+            provided_signature = _b64url_decode(signature_segment)
+        except (ValueError, binascii.Error) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Malformed access token.",
+            ) from exc
         if not hmac.compare_digest(expected_signature, provided_signature):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid access token signature.",
             )
 
-        payload_data = json.loads(_b64url_decode(payload_segment))
-        payload = TokenPayload(**payload_data)
+        try:
+            payload_data = json.loads(_b64url_decode(payload_segment))
+            payload = TokenPayload(**payload_data)
+        except (ValueError, binascii.Error, json.JSONDecodeError, ValidationError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Malformed access token.",
+            ) from exc
         if payload.exp < int(datetime.now(UTC).timestamp()):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

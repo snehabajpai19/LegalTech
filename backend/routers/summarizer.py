@@ -7,7 +7,9 @@ from pymongo.database import Database
 from database import get_db
 from dependencies.auth import get_current_user
 from models.auth import AuthenticatedUser
+from models.document import DocumentSummaryResponse
 from services.summarizer_service import summarizer_service
+from services.vector_service import vector_service
 from utils.ocr_utils import SUPPORTED_OCR_EXTENSIONS, extract_text_from_image
 from utils.pdf_utils import extract_text_from_pdf
 
@@ -18,7 +20,7 @@ def _normalize_filename(filename: str | None) -> str:
     return (filename or "").strip().lower()
 
 
-@router.post("/api/summarizer/upload/pdf")
+@router.post("/api/summarizer/upload/pdf", response_model=DocumentSummaryResponse)
 async def summarize_pdf(
     file: UploadFile = File(...),
     db: Database = Depends(get_db),
@@ -35,7 +37,7 @@ async def summarize_pdf(
         if not extracted_text:
             raise HTTPException(status_code=400, detail="The PDF is empty or could not be read.")
 
-        summary = summarizer_service.process_summarization(
+        result = summarizer_service.process_summarization(
             db=db,
             user_id=UUID(current_user.id),
             text=extracted_text,
@@ -43,7 +45,13 @@ async def summarize_pdf(
             filename=file.filename,
         )
 
-        return {"summary": summary, "filename": file.filename, "source_type": "pdf"}
+        return {
+            "document_id": result.document_id,
+            "summary": result.summary,
+            "filename": file.filename,
+            "source_type": "pdf",
+            "vector_index_ready": bool(vector_service.db),
+        }
     except HTTPException:
         raise
     except ValueError as e:
@@ -53,7 +61,7 @@ async def summarize_pdf(
         raise HTTPException(status_code=500, detail="Internal Server Error during PDF summarization.") from e
 
 
-@router.post("/api/summarizer/upload/ocr")
+@router.post("/api/summarizer/upload/ocr", response_model=DocumentSummaryResponse)
 async def summarize_ocr(
     file: UploadFile = File(...),
     db: Database = Depends(get_db),
@@ -73,7 +81,7 @@ async def summarize_ocr(
         if not extracted_text:
             raise HTTPException(status_code=400, detail="No text could be extracted from the image.")
 
-        summary = summarizer_service.process_summarization(
+        result = summarizer_service.process_summarization(
             db=db,
             user_id=UUID(current_user.id),
             text=extracted_text,
@@ -81,7 +89,13 @@ async def summarize_ocr(
             filename=file.filename,
         )
 
-        return {"summary": summary, "filename": file.filename, "source_type": "ocr"}
+        return {
+            "document_id": result.document_id,
+            "summary": result.summary,
+            "filename": file.filename,
+            "source_type": "ocr",
+            "vector_index_ready": bool(vector_service.db),
+        }
     except HTTPException:
         raise
     except RuntimeError as e:

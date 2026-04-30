@@ -35,7 +35,10 @@ def list_templates(category: Optional[str] = None) -> List[DocumentTemplate]:
     response_model=DocumentTemplate,
     status_code=status.HTTP_201_CREATED,
 )
-def create_template(payload: DocumentTemplateCreate) -> DocumentTemplate:
+def create_template(
+    payload: DocumentTemplateCreate,
+    _: AuthenticatedUser = Depends(get_current_user),
+) -> DocumentTemplate:
     return _template_service.create_template(payload)
 
 
@@ -46,13 +49,18 @@ def get_template(template_id: UUID) -> DocumentTemplate:
 
 @router.put("/api/templates/{template_id}", response_model=DocumentTemplate)
 def update_template(
-    template_id: UUID, payload: DocumentTemplateUpdate
+    template_id: UUID,
+    payload: DocumentTemplateUpdate,
+    _: AuthenticatedUser = Depends(get_current_user),
 ) -> DocumentTemplate:
     return _template_service.update_template(template_id, payload)
 
 
 @router.delete("/api/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_template(template_id: UUID) -> None:
+def delete_template(
+    template_id: UUID,
+    _: AuthenticatedUser = Depends(get_current_user),
+) -> None:
     _template_service.delete_template(template_id)
 
 

@@ -2,6 +2,7 @@
 import os
 
 from dotenv import load_dotenv
+from fastapi import HTTPException, status
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
@@ -22,7 +23,10 @@ class LLMService:
 
         except Exception as e:
             print(f"LangChain LLM Error: {e}")
-            return "I'm sorry, I encountered an error processing your legal query."
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="AI provider request failed.",
+            ) from e
 
 
 llm_service = LLMService()

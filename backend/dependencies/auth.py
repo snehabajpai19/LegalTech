@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pymongo.errors import PyMongoError
 
 from database import db_client
 from models.auth import AuthenticatedUser
@@ -25,7 +26,13 @@ def get_current_user(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="MongoDB users collection is not available.",
         )
-    user = db_client.users.find_one({"_id": payload.sub, "is_active": True})
+    try:
+        user = db_client.users.find_one({"_id": payload.sub, "is_active": True})
+    except PyMongoError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MongoDB users collection is not available.",
+        ) from exc
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

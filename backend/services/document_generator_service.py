@@ -26,7 +26,7 @@ class DocumentGeneratorService:
     PII_PATTERNS = {
         "AADHAAR": re.compile(r"\b\d{4}[ -]?\d{4}[ -]?\d{4}\b"),
         "PAN": re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b"),
-        "PHONE": re.compile(r"(\+?91[- ]?)?[6-9]\d{9}\b"),
+        "PHONE": re.compile(r"(?:\+?91[- ]?)?[6-9]\d{9}\b"),
         "EMAIL": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
     }
 
@@ -64,7 +64,7 @@ class DocumentGeneratorService:
             else None
         )
 
-        rendered_text = self._render_template(template, context)
+        rendered_text = self._render_template(template, redacted_context)
         inputs_hash = self._hash_inputs(context)
 
         document = self._persist_document(
@@ -133,10 +133,11 @@ class DocumentGeneratorService:
             if isinstance(value, str):
                 redacted_value = value
                 for label, pattern in self.PII_PATTERNS.items():
-                    for match_index, match in enumerate(pattern.findall(value), start=1):
+                    for match_index, match in enumerate(pattern.finditer(value), start=1):
+                        matched_value = match.group(0)
                         placeholder = f"[[{label}_{match_index}]]"
-                        mapping[placeholder] = match
-                        redacted_value = redacted_value.replace(match, placeholder)
+                        mapping[placeholder] = matched_value
+                        redacted_value = redacted_value.replace(matched_value, placeholder)
                 updated[key] = redacted_value
         return updated, mapping
 
