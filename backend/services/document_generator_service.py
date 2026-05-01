@@ -3,12 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Tuple
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from jinja2 import Template
+from jinja2 import StrictUndefined, TemplateSyntaxError, UndefinedError, meta
+from jinja2.sandbox import SandboxedEnvironment
 
 from database import db_client
 from models.document import Document
@@ -22,6 +23,8 @@ from services.template_service import TemplateService
 
 class DocumentGeneratorService:
     """Encapsulates the workflow for rendering legal document templates."""
+
+    TEMPLATE_HELPERS = {"now"}
 
     PII_PATTERNS = {
         "AADHAAR": re.compile(r"\b\d{4}[ -]?\d{4}[ -]?\d{4}\b"),
@@ -51,6 +54,8 @@ class DocumentGeneratorService:
         template = self.template_service.get_template(payload.template_id)
         context = payload.inputs or {}
         self._validate_required_fields(template, context)
+        self._validate_field_values(template, context)
+        self._validate_render_context(template, context)
 
         redacted_context, placeholder_map = self._apply_field_redaction(
             template.fields, context
@@ -88,6 +93,7 @@ class DocumentGeneratorService:
                 "pii_mapping_id": mapping_id,
                 "placeholder_keys": list(placeholder_map.keys()),
                 "output_format": payload.output_format,
+                "template_name": template.name,
             },
         )
 
@@ -103,6 +109,73 @@ class DocumentGeneratorService:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Missing required fields: {', '.join(missing)}",
+            )
+
+    @staticmethod
+    def _validate_field_values(template: DocumentTemplate, context: Dict[str, Any]) -> None:
+        errors = []
+        for field in template.fields:
+            value = context.get(field.name)
+            if value is None or str(value).strip() == "":
+                continue
+
+            if field.type == "number":
+                try:
+                    float(str(value))
+                except (TypeError, ValueError):
+                    errors.append(f"{field.label or field.name} must be numeric")
+
+            if field.type == "date":
+                try:
+                    date.fromisoformat(str(value))
+                except (TypeError, ValueError):
+                    errors.append(f"{field.label or field.name} must be a valid date")
+
+            if field.type == "select" and field.options:
+                if str(value) not in field.options:
+                    errors.append(
+                        f"{field.label or field.name} must be one of: {', '.join(field.options)}"
+                    )
+
+        if errors:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="; ".join(errors),
+            )
+
+    @classmethod
+    def _validate_render_context(
+        cls, template: DocumentTemplate, context: Dict[str, Any]
+    ) -> None:
+        environment = SandboxedEnvironment(undefined=StrictUndefined)
+        try:
+            parsed_template = environment.parse(template.template_text)
+        except TemplateSyntaxError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Template syntax error: {exc.message}",
+            ) from exc
+
+        variables = meta.find_undeclared_variables(parsed_template) - cls.TEMPLATE_HELPERS
+        field_names = {field.name for field in template.fields}
+        unknown_variables = sorted(variables - field_names)
+        unused_fields = sorted(field_names - variables)
+        if unknown_variables or unused_fields:
+            details = []
+            if unknown_variables:
+                details.append(f"variables without fields: {', '.join(unknown_variables)}")
+            if unused_fields:
+                details.append(f"fields not used in template: {', '.join(unused_fields)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Template fields must match template variables ({'; '.join(details)}).",
+            )
+
+        missing_inputs = sorted(variables - set(context.keys()))
+        if missing_inputs:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Missing template variables: {', '.join(missing_inputs)}",
             )
 
     @staticmethod
@@ -135,7 +208,7 @@ class DocumentGeneratorService:
                 for label, pattern in self.PII_PATTERNS.items():
                     for match_index, match in enumerate(pattern.finditer(value), start=1):
                         matched_value = match.group(0)
-                        placeholder = f"[[{label}_{match_index}]]"
+                        placeholder = f"[[{key}_{label.lower()}_{match_index}]]"
                         mapping[placeholder] = matched_value
                         redacted_value = redacted_value.replace(matched_value, placeholder)
                 updated[key] = redacted_value
@@ -157,9 +230,15 @@ class DocumentGeneratorService:
     @staticmethod
     def _render_template(template: DocumentTemplate, context: Dict[str, Any]) -> str:
         try:
-            jinja_template = Template(template.template_text)
+            environment = SandboxedEnvironment(undefined=StrictUndefined)
+            jinja_template = environment.from_string(template.template_text)
             helpers = {"now": datetime.utcnow}
             return jinja_template.render(**context, **helpers)
+        except UndefinedError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Missing template variable: {exc.message}",
+            ) from exc
         except Exception as exc:  # pragma: no cover - rare Jinja errors
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -186,6 +265,7 @@ class DocumentGeneratorService:
                 "pii_mapping_id": mapping_id,
                 "placeholders": placeholders,
                 "output_format": payload.output_format,
+                "template_name": template.name,
             },
         )
         data = document.model_dump(by_alias=True)

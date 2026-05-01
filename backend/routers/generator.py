@@ -25,6 +25,12 @@ _template_service = TemplateService()
 _generator_service = DocumentGeneratorService()
 
 
+def require_template_manager(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    return current_user
+
+
 @router.get("/api/templates", response_model=List[DocumentTemplate])
 def list_templates(category: Optional[str] = None) -> List[DocumentTemplate]:
     return _template_service.list_templates(category)
@@ -37,7 +43,7 @@ def list_templates(category: Optional[str] = None) -> List[DocumentTemplate]:
 )
 def create_template(
     payload: DocumentTemplateCreate,
-    _: AuthenticatedUser = Depends(get_current_user),
+    _: AuthenticatedUser = Depends(require_template_manager),
 ) -> DocumentTemplate:
     return _template_service.create_template(payload)
 
@@ -51,7 +57,7 @@ def get_template(template_id: UUID) -> DocumentTemplate:
 def update_template(
     template_id: UUID,
     payload: DocumentTemplateUpdate,
-    _: AuthenticatedUser = Depends(get_current_user),
+    _: AuthenticatedUser = Depends(require_template_manager),
 ) -> DocumentTemplate:
     return _template_service.update_template(template_id, payload)
 
@@ -59,7 +65,7 @@ def update_template(
 @router.delete("/api/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_template(
     template_id: UUID,
-    _: AuthenticatedUser = Depends(get_current_user),
+    _: AuthenticatedUser = Depends(require_template_manager),
 ) -> None:
     _template_service.delete_template(template_id)
 

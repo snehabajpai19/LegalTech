@@ -5,8 +5,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from config import settings 
-from routers import auth, chatbot, documents, summarizer, generator,search
+from routers import auth, chatbot, document_pdf, documents, summarizer, generator,search
 from database import db_client
+from services.template_service import TemplateService
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ app = FastAPI()
 def startup_db_client():
     if db_client.client:
         print("Backend is starting up...")
+        TemplateService().ensure_system_templates()
 
 @app.on_event("shutdown")
 def shutdown_db_client():
@@ -43,6 +45,7 @@ app.add_middleware(
 app.include_router(chatbot.router)
 app.include_router(summarizer.router)
 app.include_router(documents.router)
+app.include_router(document_pdf.router)
 app.include_router(generator.router)
 app.include_router(auth.router)
 app.include_router(search.router)
