@@ -6,6 +6,13 @@ export async function downloadElementAsPdf(
   element: HTMLElement,
   filename = "generated_document.pdf"
 ) {
+  await downloadHtmlAsPdf(element.innerHTML, filename)
+}
+
+export async function downloadHtmlAsPdf(
+  content: string,
+  filename = "generated_document.pdf"
+) {
   if (typeof window === "undefined") {
     throw new Error("PDF download is only available in the browser.")
   }
@@ -14,7 +21,7 @@ export async function downloadElementAsPdf(
   const { data } = await apiClient.post<Blob>(
     "/api/documents/download-pdf",
     {
-      content: element.innerHTML,
+      content,
       filename: safeFilename,
     },
     { responseType: "blob" }

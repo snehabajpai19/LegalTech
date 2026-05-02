@@ -55,6 +55,7 @@ import { templatesApi } from "@/lib/api/services"
 import type { DocumentTemplate } from "@/lib/api/types"
 
 const allCategoriesLabel = "All Categories"
+const otherCategoryValue = "Others"
 const legalCategoryOptions = [
   "FIR",
   "Legal Notice",
@@ -63,6 +64,7 @@ const legalCategoryOptions = [
   "Agreement",
   "Complaint",
   "NDA (Non-Disclosure Agreement)",
+  otherCategoryValue,
 ]
 
 const systemTemplateNames = new Set([
@@ -107,6 +109,7 @@ export default function TemplatesPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<DocumentTemplate | null>(null)
   const [templateForm, setTemplateForm] = useState(emptyTemplateForm)
+  const [customCategory, setCustomCategory] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -125,6 +128,20 @@ export default function TemplatesPage() {
 
   const normalizeTemplateValue = (value?: string | null) => {
     return (value || "").trim().toLowerCase()
+  }
+
+  const getDuplicateTemplateName = (name: string) => {
+    const existingNames = new Set(templates.map((template) => normalizeTemplateValue(template.name)))
+    const baseName = `${name} Copy`
+    if (!existingNames.has(normalizeTemplateValue(baseName))) return baseName
+
+    let copyNumber = 2
+    let nextName = `${baseName} ${copyNumber}`
+    while (existingNames.has(normalizeTemplateValue(nextName))) {
+      copyNumber += 1
+      nextName = `${baseName} ${copyNumber}`
+    }
+    return nextName
   }
 
   const isSystemTemplate = (template: DocumentTemplate) => {
@@ -177,20 +194,23 @@ export default function TemplatesPage() {
   const openCreateDialog = () => {
     setEditingTemplate(null)
     setTemplateForm(emptyTemplateForm)
+    setCustomCategory("")
     setError(null)
     setIsCreateDialogOpen(true)
   }
 
   const openEditDialog = (template: DocumentTemplate) => {
+    const knownCategory = categories.includes(template.category)
     setEditingTemplate(template)
     setTemplateForm({
       name: template.name,
-      category: template.category,
+      category: knownCategory ? template.category : otherCategoryValue,
       description: template.description,
       template_text: template.template_text,
       fieldsJson: JSON.stringify(template.fields, null, 2),
       version: template.version,
     })
+    setCustomCategory(knownCategory ? "" : template.category)
     setError(null)
     setIsCreateDialogOpen(true)
   }
@@ -200,9 +220,13 @@ export default function TemplatesPage() {
     setError(null)
     try {
       const fields = JSON.parse(templateForm.fieldsJson)
+      const category =
+        templateForm.category === otherCategoryValue
+          ? customCategory.trim()
+          : templateForm.category
       const payload = {
         name: templateForm.name,
-        category: templateForm.category,
+        category,
         description: templateForm.description,
         template_text: templateForm.template_text,
         fields,
@@ -216,12 +240,30 @@ export default function TemplatesPage() {
         setTemplates((prev) => [created, ...prev])
       }
       setTemplateForm(emptyTemplateForm)
+      setCustomCategory("")
       setEditingTemplate(null)
       setIsCreateDialogOpen(false)
     } catch (err) {
       setError(err instanceof SyntaxError ? "Fields must be valid JSON." : getApiErrorMessage(err))
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleDuplicateTemplate = async (template: DocumentTemplate) => {
+    try {
+      setError(null)
+      const created = await templatesApi.create({
+        name: getDuplicateTemplateName(template.name),
+        category: template.category,
+        description: template.description,
+        template_text: template.template_text,
+        fields: template.fields,
+        version: template.version || "1.0.0",
+      })
+      setTemplates((prev) => [created, ...prev])
+    } catch (err) {
+      setError(getApiErrorMessage(err))
     }
   }
 
@@ -234,6 +276,11 @@ export default function TemplatesPage() {
       setError(getApiErrorMessage(err))
     }
   }
+
+  const effectiveCategory =
+    templateForm.category === otherCategoryValue
+      ? customCategory.trim()
+      : templateForm.category
 
   const renderTemplateRows = (items: DocumentTemplate[], emptyMessage: string) => (
     <TableBody>
@@ -284,7 +331,7 @@ export default function TemplatesPage() {
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
                   <DropdownMenuItem onClick={() => navigator.clipboard.writeText(template.template_text)}>
                     <Eye className="mr-2 h-4 w-4" />
                     Preview
@@ -297,18 +344,7 @@ export default function TemplatesPage() {
                     Edit
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() => {
-                      setEditingTemplate(null)
-                      setTemplateForm({
-                        name: `${template.name} Copy`,
-                        category: template.category,
-                        description: template.description,
-                        template_text: template.template_text,
-                        fieldsJson: JSON.stringify(template.fields, null, 2),
-                        version: template.version,
-                      })
-                      setIsCreateDialogOpen(true)
-                    }}
+                    onClick={() => handleDuplicateTemplate(template)}
                   >
                     <Copy className="mr-2 h-4 w-4" />
                     Duplicate
@@ -429,6 +465,17 @@ export default function TemplatesPage() {
                   </SelectContent>
                 </Select>
               </div>
+              {templateForm.category === otherCategoryValue && (
+                <div className="space-y-2">
+                  <Label htmlFor="customCategory">Enter custom category</Label>
+                  <Input
+                    id="customCategory"
+                    placeholder="Enter custom category"
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
@@ -492,7 +539,7 @@ export default function TemplatesPage() {
               </Button>
               <Button
                 onClick={handleSaveTemplate}
-                disabled={!templateForm.name || !templateForm.category || !templateForm.template_text || isSaving}
+                disabled={!templateForm.name || !effectiveCategory || !templateForm.template_text || isSaving}
               >
                 {isSaving ? "Saving..." : editingTemplate ? "Save Changes" : "Create Template"}
               </Button>
