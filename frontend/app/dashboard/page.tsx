@@ -43,8 +43,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAuth } from "@/contexts/auth-provider"
 import { getApiErrorMessage } from "@/lib/api/client"
-import { documentsApi, templatesApi } from "@/lib/api/services"
-import type { StoredDocument } from "@/lib/api/types"
+import { chatbotApi, documentsApi, templatesApi } from "@/lib/api/services"
+import type { ChatHistoryItem, StoredDocument } from "@/lib/api/types"
 import { DocumentContent } from "@/components/documents/document-content"
 import { downloadElementAsPdf, downloadTextFile, toPdfFilename, toTextFilename } from "@/lib/pdf"
 
@@ -79,47 +79,19 @@ const tools = [
   },
 ]
 
-const recentActivity = [
-  {
-    id: 1,
-    action: "Generated document",
-    document: "Employment Contract",
-    time: "2 hours ago",
-    icon: FilePlus,
-  },
-  {
-    id: 2,
-    action: "Summarized",
-    document: "Client Agreement.pdf",
-    time: "4 hours ago",
-    icon: FileText,
-  },
-  {
-    id: 3,
-    action: "AI Chat session",
-    document: "Contract law questions",
-    time: "Yesterday",
-    icon: MessageSquare,
-  },
-  {
-    id: 4,
-    action: "Legal search",
-    document: "Employment termination precedents",
-    time: "Yesterday",
-    icon: Search,
-  },
-]
-
-const stats = [
-  { label: "Documents Generated", value: "47", icon: FilePlus, trend: "+12%" },
-  { label: "AI Queries", value: "234", icon: MessageSquare, trend: "+8%" },
-  { label: "Hours Saved", value: "89", icon: Clock, trend: "+15%" },
-  { label: "Documents Analyzed", value: "156", icon: FileCheck, trend: "+23%" },
-]
+type RecentActivityItem = {
+  id: string
+  action: string
+  document: string
+  time: string
+  timestamp: number
+  icon: typeof FilePlus
+}
 
 export default function DashboardPage() {
   const { user } = useAuth()
   const [documents, setDocuments] = useState<StoredDocument[]>([])
+  const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([])
   const [templateNamesById, setTemplateNamesById] = useState<Record<string, string>>({})
   const [selectedDocument, setSelectedDocument] = useState<StoredDocument | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -142,15 +114,27 @@ export default function DashboardPage() {
       try {
         setIsLoadingDocuments(true)
         setDocumentsError(null)
-        const [documentsData, templatesData] = await Promise.all([
+        const [documentsResult, templatesResult, chatHistoryResult] = await Promise.allSettled([
           documentsApi.list(),
           templatesApi.list(),
+          chatbotApi.history(),
         ])
         if (!ignore) {
-          setDocuments(documentsData)
-          setTemplateNamesById(
-            Object.fromEntries(templatesData.map((template) => [template._id, template.name]))
-          )
+          if (documentsResult.status === "fulfilled") {
+            setDocuments(documentsResult.value)
+          } else {
+            setDocumentsError(getApiErrorMessage(documentsResult.reason))
+          }
+
+          if (templatesResult.status === "fulfilled") {
+            setTemplateNamesById(
+              Object.fromEntries(templatesResult.value.map((template) => [template._id, template.name]))
+            )
+          }
+
+          if (chatHistoryResult.status === "fulfilled") {
+            setChatHistory(chatHistoryResult.value)
+          }
         }
       } catch (err) {
         if (!ignore) setDocumentsError(getApiErrorMessage(err))
@@ -198,6 +182,86 @@ export default function DashboardPage() {
       year: "numeric",
     })
   }
+
+  const formatActivityTime = (value?: string | null) => {
+    if (!value) return "Date unavailable"
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return "Date unavailable"
+
+    const diffMs = Date.now() - date.getTime()
+    const minute = 60 * 1000
+    const hour = 60 * minute
+    const day = 24 * hour
+
+    if (diffMs < minute) return "Just now"
+    if (diffMs < hour) {
+      const minutes = Math.floor(diffMs / minute)
+      return `${minutes} min${minutes === 1 ? "" : "s"} ago`
+    }
+    if (diffMs < day) {
+      const hours = Math.floor(diffMs / hour)
+      return `${hours} hour${hours === 1 ? "" : "s"} ago`
+    }
+    if (diffMs < 2 * day) return "Yesterday"
+
+    return date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+  }
+
+  const dashboardStats = useMemo(
+    () => [
+      {
+        label: "Documents Generated",
+        value: String(documents.filter((document) => Boolean(document.generated_text)).length),
+        icon: FilePlus,
+        trend: "Live",
+      },
+      {
+        label: "AI Queries",
+        value: String(chatHistory.length),
+        icon: MessageSquare,
+        trend: "Live",
+      },
+      { label: "Hours Saved", value: "89", icon: Clock, trend: "Static" },
+      {
+        label: "Documents Analyzed",
+        value: String(documents.filter((document) => Boolean(document.summarized_text)).length),
+        icon: FileCheck,
+        trend: "Live",
+      },
+    ],
+    [chatHistory.length, documents]
+  )
+
+  const recentActivities = useMemo<RecentActivityItem[]>(() => {
+    const documentActivities = documents.map((document) => {
+      const isGenerated = Boolean(document.generated_text)
+      return {
+        id: `document-${document._id}`,
+        action: isGenerated ? "Generated document" : "Analyzed document",
+        document: getDocumentTitle(document),
+        time: formatActivityTime(document.created_at),
+        timestamp: new Date(document.created_at).getTime() || 0,
+        icon: isGenerated ? FilePlus : FileText,
+      }
+    })
+
+    const chatActivities = chatHistory.map((chat) => ({
+      id: `chat-${chat._id}`,
+      action: chat.document_id ? "Document chat" : "AI chat query",
+      document: chat.message,
+      time: formatActivityTime(chat.created_at || chat.timestamp),
+      timestamp: new Date(chat.created_at || chat.timestamp).getTime() || 0,
+      icon: MessageSquare,
+    }))
+
+    return [...documentActivities, ...chatActivities]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 6)
+  }, [chatHistory, documents, templateNamesById])
 
   const filteredDocuments = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -326,7 +390,7 @@ export default function DashboardPage() {
 
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
+        {dashboardStats.map((stat) => (
           <Card key={stat.label} className="border-border/50">
             <CardContent className="flex items-center gap-4 p-6">
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -338,7 +402,7 @@ export default function DashboardPage() {
               </div>
               <div className="ml-auto flex items-center gap-1 text-sm text-emerald-600">
                 <TrendingUp className="h-4 w-4" />
-                {stat.trend}
+              {stat.trend}
               </div>
             </CardContent>
           </Card>
@@ -519,7 +583,7 @@ export default function DashboardPage() {
         <Card className="border-border/50">
           <CardContent className="p-0">
             <div className="divide-y divide-border">
-              {recentActivity.map((activity) => (
+              {recentActivities.length > 0 ? recentActivities.map((activity) => (
                 <div
                   key={activity.id}
                   className="flex items-center gap-4 p-4 transition-colors hover:bg-muted/50"
@@ -537,7 +601,11 @@ export default function DashboardPage() {
                     {activity.time}
                   </span>
                 </div>
-              ))}
+              )) : (
+                <div className="p-6 text-sm text-muted-foreground">
+                  No recent activity yet.
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

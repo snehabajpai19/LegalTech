@@ -4,6 +4,7 @@ import type {
   AuthenticatedUser,
   ChatQueryRequest,
   ChatQueryResponse,
+  ChatHistoryItem,
   DocumentSummaryResponse,
   StoredDocument,
   DocumentTemplate,
@@ -30,6 +31,10 @@ export const authApi = {
 export const chatbotApi = {
   query: async (payload: ChatQueryRequest) => {
     const { data } = await apiClient.post<ChatQueryResponse>("/api/chatbot/query", payload)
+    return data
+  },
+  history: async () => {
+    const { data } = await apiClient.get<ChatHistoryItem[]>("/api/chat/history")
     return data
   },
 }

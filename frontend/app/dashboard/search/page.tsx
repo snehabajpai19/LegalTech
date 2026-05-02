@@ -21,6 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { getApiErrorMessage } from "@/lib/api/client"
@@ -35,6 +42,9 @@ interface SearchResult {
   year: string
   citation: string
   excerpt: string
+  content: string
+  metadata: Record<string, unknown>
+  distance: number
   relevance: number
 }
 
@@ -53,6 +63,7 @@ export default function LegalSearchPage() {
   const [hasSearched, setHasSearched] = useState(false)
   const [indexReady, setIndexReady] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null)
 
   const toSearchResult = (hit: LegalSearchHit, index: number): SearchResult => {
     const metadata = hit.metadata || {}
@@ -62,14 +73,24 @@ export default function LegalSearchPage() {
         ? rawType
         : "statute"
 
+    const act = metadata.act ? String(metadata.act) : ""
+    const section = metadata.section ? String(metadata.section) : ""
+    const title =
+      String(metadata.title || metadata.section_title || "").trim() ||
+      [act, section ? `Section ${section}` : ""].filter(Boolean).join(" - ") ||
+      `Legal result ${index + 1}`
+
     return {
       id: `${index}-${hit.distance}`,
-      title: String(metadata.title || metadata.section || metadata.section_title || `Legal result ${index + 1}`),
+      title,
       type,
       court: metadata.court ? String(metadata.court) : undefined,
       year: String(metadata.year || metadata.date || "N/A"),
       citation: String(metadata.citation || metadata.source || metadata.act || "Legal index"),
       excerpt: hit.content,
+      content: hit.content,
+      metadata,
+      distance: hit.distance,
       relevance: Math.max(0, Math.round((1 - Math.min(hit.distance, 1)) * 100)),
     }
   }
@@ -218,7 +239,8 @@ export default function LegalSearchPage() {
               return (
                 <Card
                   key={result.id}
-                  className="group border-border/50 transition-all hover:border-accent/50 hover:shadow-md"
+                  className="group cursor-pointer border-border/50 transition-all hover:border-accent/50 hover:shadow-md"
+                  onClick={() => setSelectedResult(result)}
                 >
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between gap-4">
@@ -246,7 +268,7 @@ export default function LegalSearchPage() {
                         <p className="mt-1 text-sm text-muted-foreground">
                           {result.citation}
                         </p>
-                        <p className="mt-3 text-sm leading-relaxed">{result.excerpt}</p>
+                        <p className="mt-3 line-clamp-4 text-sm leading-relaxed">{result.excerpt}</p>
                       </div>
 
                       <div className="flex flex-col items-end gap-2">
@@ -256,7 +278,15 @@ export default function LegalSearchPage() {
                           </span>
                           <span className="text-muted-foreground">relevance</span>
                         </div>
-                        <Button variant="ghost" size="sm" className="gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-2"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setSelectedResult(result)
+                          }}
+                        >
                           View Full
                           <ExternalLink className="h-3 w-3" />
                         </Button>
@@ -284,7 +314,61 @@ export default function LegalSearchPage() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={!!selectedResult} onOpenChange={(open) => !open && setSelectedResult(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          {selectedResult && (
+            <>
+              <DialogHeader>
+                <div className="flex flex-wrap items-center gap-2 pr-8">
+                  <DialogTitle className="line-clamp-2">{selectedResult.title}</DialogTitle>
+                  <Badge variant="secondary">
+                    {selectedResult.type.charAt(0).toUpperCase() + selectedResult.type.slice(1)}
+                  </Badge>
+                </div>
+                <DialogDescription>
+                  {selectedResult.citation}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-5">
+                <section>
+                  <h3 className="mb-2 text-sm font-medium">Full Text</h3>
+                  <div className="max-h-[45vh] overflow-y-auto rounded-lg border bg-muted/30 p-4">
+                    <p className="whitespace-pre-wrap text-sm leading-6">
+                      {selectedResult.content}
+                    </p>
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="mb-2 text-sm font-medium">Metadata</h3>
+                  <div className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
+                    {Object.entries(selectedResult.metadata).length > 0 ? (
+                      Object.entries(selectedResult.metadata).map(([key, value]) => (
+                        <div key={key}>
+                          <p className="capitalize text-muted-foreground">
+                            {key.replaceAll("_", " ")}
+                          </p>
+                          <p className="mt-1 break-words font-medium">
+                            {String(value)}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground">No metadata available.</p>
+                    )}
+                    <div>
+                      <p className="text-muted-foreground">Distance</p>
+                      <p className="mt-1 font-medium">{selectedResult.distance.toFixed(4)}</p>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-
