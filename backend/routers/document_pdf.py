@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import re
+import shutil
 from io import BytesIO
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
+from config import settings
 from dependencies.auth import get_current_user
 from models.auth import AuthenticatedUser
 from models.pdf import PdfDownloadRequest
 
 router = APIRouter()
+
+WINDOWS_WKHTMLTOPDF_PATHS = (
+    Path("C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe"),
+    Path("C:/Program Files (x86)/wkhtmltopdf/bin/wkhtmltopdf.exe"),
+)
 
 
 DOCUMENT_CSS = """
@@ -71,10 +79,6 @@ def _sanitize_pdf_filename(filename: str | None) -> str:
     return cleaned
 
 
-def _block_external_resources(*_, **__):
-    raise ValueError("External resources are not allowed in PDF rendering.")
-
-
 def _build_html_document(content: str) -> str:
     return f"""<!doctype html>
 <html>
@@ -88,24 +92,67 @@ def _build_html_document(content: str) -> str:
 </html>"""
 
 
+def _resolve_wkhtmltopdf_path() -> str | None:
+    if settings.WKHTMLTOPDF_PATH:
+        return settings.WKHTMLTOPDF_PATH
+
+    executable = shutil.which("wkhtmltopdf")
+    if executable:
+        return executable
+
+    for path in WINDOWS_WKHTMLTOPDF_PATHS:
+        if path.exists():
+            return str(path)
+
+    return None
+
+
+def _get_wkhtmltopdf_config():
+    import pdfkit
+
+    executable = _resolve_wkhtmltopdf_path()
+    if not executable:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="wkhtmltopdf is not installed or is not configured on this host.",
+        )
+    try:
+        return pdfkit.configuration(wkhtmltopdf=executable)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="wkhtmltopdf is not available at the configured path.",
+        ) from exc
+
+
 @router.post("/api/documents/download-pdf")
 def download_pdf(
     payload: PdfDownloadRequest,
     _: AuthenticatedUser = Depends(get_current_user),
 ) -> StreamingResponse:
     try:
-        from weasyprint import HTML
+        import pdfkit
     except (ImportError, OSError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Server-side PDF rendering is not available on this host.",
+            detail="Server-side PDF rendering is not available. Install pdfkit and wkhtmltopdf.",
         ) from exc
 
+    configuration = _get_wkhtmltopdf_config()
+    options = {
+        "encoding": "UTF-8",
+        "disable-javascript": None,
+        "disable-local-file-access": None,
+        "quiet": None,
+    }
+
     try:
-        pdf_bytes = HTML(
-            string=_build_html_document(payload.content),
-            url_fetcher=_block_external_resources,
-        ).write_pdf()
+        pdf_bytes = pdfkit.from_string(
+            _build_html_document(payload.content),
+            False,
+            configuration=configuration,
+            options=options,
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
