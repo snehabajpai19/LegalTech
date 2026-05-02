@@ -12,16 +12,31 @@ from services.vector_service import vector_service
 
 def _build_general_prompt(query: str) -> str:
     try:
-        relevant_docs = vector_service.search_legal_docs(query, k=3)
+        relevant_docs = vector_service.search_for_chatbot(query, k=3)
         context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
     except Exception:
         context_text = ""
     return (
-        "You are a helpful legal assistant. Answer the user's question clearly and "
-        "practically. Use the legal context if it helps.\n\n"
-        f"Legal context:\n{context_text or 'No specific legal context retrieved.'}\n\n"
-        f"Question:\n{query}"
-    )
+    "You are a legal assistant focused on Indian law.\n\n"
+
+    "IMPORTANT RULES:\n"
+    "- Always assume the question is about Indian law unless explicitly mentioned otherwise.\n"
+    "- Answer clearly in simple, plain text.\n"
+    "- Do NOT use markdown formatting (no **, *, bullet points, or headings).\n"
+    "- Avoid unnecessary structuring; use natural paragraphs.\n"
+    "- Do NOT include unrelated laws or multiple international interpretations.\n\n"
+
+    "CONTEXT USAGE RULE:\n"
+    "- Use the provided legal context as the primary source.\n"
+    "- If relevant context is found, base your answer mainly on it.\n"
+    "- If limited or no relevant context is found, you may use your general legal knowledge, but clearly don't hallucinate much\n"
+    "\n\n"
+
+    f"Legal context:\n{context_text or 'No relevant legal context found in the database.'}\n\n"
+    f"Question:\n{query}\n\n"
+
+    "Answer:"
+)
 
 
 def _extract_document_text(document: dict) -> str:
@@ -35,7 +50,7 @@ def _extract_document_text(document: dict) -> str:
 def _build_document_prompt(query: str, document_text: str) -> str:
     retrieval_query = f"{query}\n\nRelevant document excerpt:\n{document_text[:1200]}"
     try:
-        relevant_docs = vector_service.search_legal_docs(retrieval_query, k=3)
+        relevant_docs = vector_service.search_for_chatbot(retrieval_query, k=3)
         legal_context = "\n\n".join(doc.page_content for doc in relevant_docs)
     except Exception:
         legal_context = ""
