@@ -25,6 +25,17 @@ export interface ChatQueryResponse {
   vector_index_ready: boolean
 }
 
+export interface ChatHistoryItem {
+  _id: string
+  user_id: string
+  document_id?: string | null
+  message: string
+  answer: string
+  mode: string
+  created_at: string
+  timestamp: string
+}
+
 export interface DocumentSummaryResponse {
   document_id: string
   summary: string
