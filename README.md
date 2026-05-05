@@ -1,5 +1,5 @@
-# LegalTech
-# ⚖️ LegalTech AI System
+# LegalEdge
+# ⚖️ LegalEdge AI System
 
 This is a full-stack LegalTech platform built with a modern AI-powered backend and a fast, responsive frontend.
 
